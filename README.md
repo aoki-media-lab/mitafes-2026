@@ -75,6 +75,30 @@ python live_fused.py --duration 600 --output runs/live_10min
 python live_fused.py --file /path/to/glass.mp4 --duration 1400 --output runs/live_virtual
 ```
 
+### 両方向カウント（入場・退場・構内人数）
+
+数える向きはセットアップJSONの `profile.count_directions` で決まります。2026-11-23からの本番設定 `reference/setups/glass_view3_both_20261123.json` は両方向を数え、`in_direction`（`rtl`＝入場）と `direction_labels`（`入場`/`退場`）を持ちます。Webビューは入場・退場・その差（6:00からこの門で入って、まだこの門から出ていない人数）と、時間帯別の出入り（入場は上向き、退場は下向き）・差の推移を表示します。退場を数えていない時間がその日にあると、差は表示しません。
+
+右→左だけを残していた日の退場は、保存済みの軌跡から推論なしで数え直せます（右→左が実運用と完全一致することを `--verify` で確認）:
+
+```sh
+python scripts/recount_tracks.py --run runs/live/20261122_060000 --output runs/recount/20261122_both --verify
+```
+
+結果を `runs/live/<日付>_recount_*/`（`live_events.jsonl` に `clock`、`window.json` に `start`/`end`/`directions`）に置くと、Webビューの日別表示がその区間を置き換えます（11/22は `20261122_recount_both`）。
+
+### 影・夕方向けの調整（`glass_view3_tuned_20261123.json`）
+
+11/22 のNVR録画（9:55〜11:05、12:55〜14:05、16:55〜18:05）で調整した設定です。
+
+- `detect_conf: 0.03`：検出の下限。影の中の黒っぽい服の人や、夕方にブレた人は信頼度0.05〜0.28で検出されるため、これを残して追跡をつなぎます。
+- `pose_new_track_thresh: 0.1`：新規追跡の閾値（従来は full 0.2 / roi 0.3）。
+- `rule_min_confidence: 0.3`：補う規則（late_birth / stitch / late_death）は、最高信頼度が0.3に達した追跡だけが使えます。薄い断片が数に化けるのを防ぎます。
+
+入場（右→左）は 3,395→3,511（朝）、3,812→4,053（昼）、842→982（夕）。`schedule`（`[{"from":"HH:MM","profile":{...}}]`）で時間帯ごとに値を変えられます（`live_fused.py` が10秒ごとに確認し、実行中に切り替えます）。
+
+閾値の比較は、`run_fused.py --dump-detections --conf 0.03` で検出を一度保存し、`replay_fused.py --min-conf/--override` で推論なしに行います。違いは `scripts/diff_review.py`（片方だけが数えた通過の前後を切り出し）で目視確認します。
+
 TP-Link VIGI NVRのライブ映像は `rtsp://IP:554/live/<チャンネル>/<1=メイン|2=サブ>/avm` です。入力は2880×1620 / 25fpsのみ受け付けます。処理が約2.6秒分以上遅れると、遅延が際限なく伸びないよう8観測単位で破棄し `dropped_frames` に数えます。切断時は再接続し、時間軸を経過時間ぶん進めます。10秒ごとの受信fps・遅延・破棄数・GPU電力を `live_status.jsonl` に記録し、終了時に逐次照合とオフライン照合の通過数を比較します。
 
 ## Apple Siliconで実行

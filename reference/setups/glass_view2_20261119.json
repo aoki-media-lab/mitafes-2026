@@ -1,0 +1,43 @@
+{
+ "description": "Glass camera after the view change found on 2026-11-19 (tilted down / panned right). Vertical count line just left of the tactile paving at the plaza/stairs boundary. Foot ROI excludes the far fence area and everything above the glass-railing foot (reflections). Only right-to-left passages are counted (count_directions); line position x=0.45-0.65 gave the same rtl counts on two validation clips (27/27 and 47-50 vs ~48), 0.55 is the middle of that stable range.",
+ "profile": {
+  "line_x": 0.55,
+  "margin": 0.0125,
+  "roi_mode": "polygon",
+  "roi_polygon": [
+   [
+    0,
+    0.13
+   ],
+   [
+    0.6,
+    0.11
+   ],
+   [
+    0.61,
+    0.26
+   ],
+   [
+    1.0,
+    0.54
+   ],
+   [
+    1.0,
+    1.0
+   ],
+   [
+    0,
+    1.0
+   ]
+  ],
+  "count_directions": [
+   "rtl"
+  ]
+ },
+ "roi_crop": [
+  0.35,
+  0,
+  0.75,
+  1
+ ]
+}

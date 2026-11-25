@@ -65,6 +65,26 @@ class StreamMergeTests(unittest.TestCase):
             totals=merger.totals()
             self.assertEqual((totals['ltr'],totals['rtl'],totals['events']),(offline['ltr'],offline['rtl'],offline['events']),seed)
 
+    def test_secondary_late_birth_is_added_without_both_sides(self):
+        # The roi branch alone saw a person first just past the line (late birth); the
+        # side test cannot apply to it. The same track without the rule stays rejected.
+        for rule,expected in (('late_birth',1),('',0)):
+            people=lambda f:[dict(id=7,anchor=[1650-6*f,600.],xyxy=[1570-6*f,560,1730-6*f,1100])] if f<=60 else []
+            branches={0:dict(events=[],tracks=[]),1:dict(tracks=[],events=[dict(event_id=1,direction='rtl',frame=10,
+                      seconds=.4,track_id=7,x=1728.,y=600.,rule=rule)])}
+            for b in (0,1):branches[b]['tracks']=[dict(frame=f,people=people(f) if b else [],umbrellas=[],matches=[]) for f in range(0,300,2)]
+            with tempfile.TemporaryDirectory() as td:
+                root=Path(td)
+                for name,b in (('p',0),('s',1)):
+                    (root/name).mkdir()
+                    with (root/name/'events.csv').open('w') as f:
+                        w=csv.DictWriter(f,fieldnames=FIELDS+['rule']);w.writeheader();w.writerows(branches[b]['events'])
+                    with (root/name/'tracks.jsonl').open('w') as f:
+                        for row in branches[b]['tracks']:f.write(json.dumps(row)+'\n')
+                with contextlib.redirect_stdout(io.StringIO()):offline=indexed(root/'p',root/'s',root/'out')
+            merger,_=stream(branches)
+            self.assertEqual((len(offline['added']),len(merger.added)),(expected,expected),rule)
+
     def test_memory_is_bounded_by_the_decision_window(self):
         merger,max_buffer=stream(scenario(0,frames=6000))
         self.assertLessEqual(max_buffer,KEEP//2+2)

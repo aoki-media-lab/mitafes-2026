@@ -17,7 +17,7 @@ def events(folder):
     with (folder/'events.csv').open() as f:return list(csv.DictReader(f))
 
 
-def merge(primary,secondary,output):
+def merge(primary,secondary,output,line_band=(1692,1764)):
     output.mkdir(parents=True,exist_ok=True);started=time.perf_counter()
     aa,bb=events(primary),events(secondary)
     handle=tempfile.NamedTemporaryFile(prefix='merge_',suffix='.sqlite',dir=output,delete=False);scratch=Path(handle.name);handle.close()
@@ -63,12 +63,15 @@ def merge(primary,secondary,output):
             nearby=by_time[bisect.bisect_left(times,seconds-3):bisect.bisect_right(times,seconds+3)]
             if any(same_passage(a,history(0,int(a['track_id']),int(a['frame'])),b,pb) for a in nearby):suppressed+=1;continue
             xs=[p['anchor'][0] for f,p in pb.items() if abs(f-int(b['frame']))<=75]
-            if any(x<1692 for x in xs) and any(x>1764 for x in xs):added.append(b)
+            # Rule-based counts (late_birth, stitch, late_death) are by definition not seen on
+            # both sides by one track; their counter checked the crossing, so the side test does not apply.
+            if b.get('rule') or (any(x<line_band[0] for x in xs) and any(x>line_band[1] for x in xs)):added.append(b)
         ev=[dict(e) for e in aa]+[dict(e,track_id=int(e['track_id'])+offset) for e in added]
         ev.sort(key=lambda e:float(e['seconds']))
         for i,e in enumerate(ev,1):e['event_id']=i
         with temp_events.open('w') as f:
-            writer=csv.DictWriter(f,fieldnames=FIELDS);writer.writeheader();writer.writerows(ev)
+            fields=FIELDS+['rule']*any(e.get('rule') for e in ev)
+            writer=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore',restval='');writer.writeheader();writer.writerows(ev)
         added_ids={int(e['track_id']) for e in added}
         with (primary/'tracks.jsonl').open() as p,(secondary/'tracks.jsonl').open() as s,temp_tracks.open('w') as dst:
             for pl,sl in zip_longest(p,s):

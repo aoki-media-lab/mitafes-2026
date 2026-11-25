@@ -1,0 +1,75 @@
+{
+ "description": "Tuned 2026-11-23 on NVR recordings of 11/22 (09:55-11:05, 12:55-14:05, 16:55-18:05): detections down to 0.03 are kept (detect_conf) so a person in deep shadow, in dark clothes or motion-blurred at dusk keeps being tracked, new tracks start from 0.10 (was 0.2 full / 0.3 roi), and the gap-filling rules (late_birth, stitch, late_death) only use tracks whose best score reached 0.3 (rule_min_confidence), so faint fragments do not become counts. Right-to-left (in): 09:55-11:05 3,395 -> 3,511, 16:55-18:05 842 -> 982; most added counts checked by eye were real crossings in the shadow band / at dusk; dense evening outflow crowds still contain some ID-switch errors. 'schedule' can change profile values by time of day. Base: Same view, line, ROI and crossing rules as glass_view3_20261120.json, but both directions are counted (2026-11-23): right-to-left = into the campus (up the stairs from the street onto the plaza), left-to-right = out. The web view shows in, out and in-out (people who came in through this gate since the start of counting and have not left through it). The counting rules are symmetric; left-to-right was checked by replaying the saved trajectories of 11/22 (scripts/recount_tracks.py), where right-to-left reproduced the live events exactly. Previous description: Glass camera view as of 2026-11-20 morning (re-derived from scratch on a 10-min recording, live_20261120_view3.mp4). Vertical count line at x=0.50, between the two free-standing sign boards (x~0.46-0.48 and 0.54-0.56): at 0.55 the right board hid people walking along the far edge and caused misses. Foot ROI follows the plaza's far edge on the left and the stair edge along the glass railing on the right; everything above it (people seen through / reflected in the glass, which produced a dense band of detections) is excluded. Only right-to-left passages are counted. late_birth_crossings counts people first detected just past the line after crossing hidden in a group or under a reflection streak. With it, rtl was 133-135 for line_x 0.50-0.60 on the 10-min clip; every event that differed between positions was checked by eye and 0.50 counted all of them once. If the sign boards are moved, re-check the line position. stitch_crossings (2026-11-20 11:40): a track broken while people overlap at the line is joined with its continuation past the line, or counted when it vanishes at the line moving across (biased to over-count); duplicate detection is scaled to person size so companions walking side by side are not merged.",
+ "profile": {
+  "line_x": 0.5,
+  "margin": 0.0125,
+  "roi_mode": "polygon",
+  "roi_polygon": [
+   [
+    0,
+    0.1
+   ],
+   [
+    0.14,
+    0.13
+   ],
+   [
+    0.36,
+    0.21
+   ],
+   [
+    0.58,
+    0.235
+   ],
+   [
+    0.62,
+    0.265
+   ],
+   [
+    0.7,
+    0.315
+   ],
+   [
+    0.8,
+    0.385
+   ],
+   [
+    0.9,
+    0.46
+   ],
+   [
+    1.0,
+    0.53
+   ],
+   [
+    1.0,
+    1.0
+   ],
+   [
+    0,
+    1.0
+   ]
+  ],
+  "count_directions": [
+   "rtl",
+   "ltr"
+  ],
+  "late_birth_crossings": true,
+  "stitch_crossings": true,
+  "in_direction": "rtl",
+  "direction_labels": {
+   "rtl": "入場",
+   "ltr": "退場"
+  },
+  "pose_new_track_thresh": 0.1,
+  "rule_min_confidence": 0.3
+ },
+ "roi_crop": [
+  0.35,
+  0,
+  0.75,
+  1
+ ],
+ "detect_conf": 0.03,
+ "schedule": []
+}

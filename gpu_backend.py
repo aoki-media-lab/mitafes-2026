@@ -10,6 +10,10 @@ from ultralytics.data.augment import LetterBox
 from ultralytics.engine.results import Results
 from ultralytics.utils import ops
 from ultralytics.utils.nms import non_max_suppression
+# Loaded on purpose: Ultralytics' NMS uses torchvision.ops.nms when torchvision is already imported, otherwise
+# a Python loop with a GPU sync per kept box. Same boxes (checked 96/96 identical on crowded frames at conf 0.1
+# and 0.03), ~30x faster: 125-200 ms -> ~5 ms per batch of 8 in a crowd.
+import torchvision  # noqa: F401
 
 
 class GpuModel:

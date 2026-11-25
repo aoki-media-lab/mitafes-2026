@@ -9,6 +9,20 @@ from camera_counter import (TemporalCounter,PoseAnchorTracker,make_tracker,objec
 from ultralytics.trackers.basetrack import BaseTrack
 
 
+def make_people_counter(profile,width,fps):
+    """Line counter for people, with the extra crossing rules the profile enables."""
+    if profile.get('stitch_crossings',False):
+        from stitch_counter import StitchCounter
+        return StitchCounter(profile,width,fps)
+    if profile.get('late_birth_crossings',False):
+        from late_birth_counter import LateBirthCounter
+        return LateBirthCounter(profile,width,fps)
+    if profile.get('occlusion_crossings',False):
+        from occlusion_counter import OcclusionCounter
+        return OcclusionCounter(profile,width,fps)
+    return TemporalCounter(profile,width,fps)
+
+
 class StreamingCounter:
     def __init__(self,profile,width,height,fps,stride):
         self.profile=profile;self.width=width;self.height=height;self.fps=fps;self.stride=stride
@@ -23,10 +37,7 @@ class StreamingCounter:
                 self.people_tracker=cls(fps,profile)
         else:self.people_tracker=make_tracker(fps/stride,profile)
         self.umbrella_tracker=make_tracker(fps/(stride*profile.get('umbrella_every',1)),profile,umbrella=True)
-        self.people_counter=TemporalCounter(profile,width,fps)
-        if profile.get('occlusion_crossings',False):
-            from occlusion_counter import OcclusionCounter
-            self.people_counter=OcclusionCounter(profile,width,fps)
+        self.people_counter=make_people_counter(profile,width,fps)
         self.umbrella_counter=TemporalCounter(profile,width,fps)
         self.totals=Counter(ltr=0,rtl=0)
         self.umbrella_total=0;self.umbrella_review_total=0;self.rejected=0
@@ -57,6 +68,11 @@ class StreamingCounter:
         for person in people:
             x,y=person.get('anchor',foot(person['xyxy']))
             self.people_counter.update(person['id'],x,y,frame)
+            st=self.people_counter.states.get(person['id'])
+            if st is not None:
+                st['h']=person['xyxy'][3]-person['xyxy'][1]   # person size for duplicate checks
+                st['conf']=max(st.get('conf',0.),person.get('confidence',1.))   # best detection score so far (rule_min_confidence)
+        if hasattr(self.people_counter,'tick'):self.people_counter.tick(frame)
         events=self.people_counter.events[:];self.people_counter.events.clear()
         for event in events:
             self.totals[event['direction']]+=1;event['event_id']=sum(self.totals.values())

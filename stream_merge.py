@@ -65,7 +65,7 @@ class StreamMerger:
                     self.suppressed+=1;return []
         xs=[p['anchor'][0] for f,p in pb.items() if abs(f-bf)<=SIDE_WINDOW]
         lo,hi=self.line_band
-        if any(x<lo for x in xs) and any(x>hi for x in xs):
+        if b.get('rule') or (any(x<lo for x in xs) and any(x>hi for x in xs)):
             self.added.append(b);return [b]
         return []
 
