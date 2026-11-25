@@ -10,6 +10,10 @@ from ultralytics.data.augment import LetterBox
 from ultralytics.engine.results import Results
 from ultralytics.utils import ops
 from ultralytics.utils.nms import non_max_suppression
+# Loaded on purpose: Ultralytics' NMS uses torchvision.ops.nms when torchvision is already imported,
+# otherwise a Python loop with a GPU sync per kept box. Night clip 18:10 (10 min, conf 0.05): inference
+# 347 s -> 108 s, detections equal to <1 px in 98% of frames (rest: run-to-run float noise), 237 vs 240 counts.
+import torchvision  # noqa: F401
 
 
 class GpuModel:
@@ -80,6 +84,63 @@ class GpuModel:
                 cpu=pred.cpu()
                 output.append(Results(image,'',self.names,boxes=cpu[:,:6],
                                       keypoints=cpu[:,6:].view(-1,*self.kpt_shape) if self.kpt_shape else None))
+        return output
+
+    def predict(self,images,imgsz,conf,iou,classes,device=None,half=False,verbose=False):
+        self.enqueue(images)
+        return self.collect(conf,iou,classes)
+
+
+FLIP_KEYPOINTS=[0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,16,15]   # COCO left/right swap
+
+
+class EnsembleModel:
+    """Several detectors on the same input; their detections are united by one more NMS.
+
+    ``flips[i]`` runs member i on the horizontally mirrored input and maps its boxes and
+    joints back (test-time augmentation with the same weights).
+
+    Each model runs its own NMS first (as a single model would), then the boxes of all
+    models are merged per image with class-wise NMS at the same IoU. A person found by
+    either model is kept; the same person found by both is kept once (highest score).
+    Used for the person branches: a larger model finds people in dark clothes and
+    partly hidden people that the smaller one misses, and vice versa.
+    """
+    def __init__(self,paths,device,shape,backend='graph',batch=1,half=False,flips=None):
+        self.models=[GpuModel(p,device,shape,backend,batch,half) for p in paths]
+        self.flips=list(flips) if flips else [False]*len(paths)
+        first=self.models[0];self.task=first.task;self.names=first.names;self.kpt_shape=first.kpt_shape
+        if any(m.task!=self.task or m.kpt_shape!=self.kpt_shape for m in self.models):
+            raise ValueError('Ensemble members must be the same kind of model')
+
+    def enqueue_prepared(self,array,shapes):
+        # Letterboxing pads both sides equally, so mirroring the prepared input equals
+        # preparing the mirrored image (to within one pixel).
+        for m,f in zip(self.models,self.flips):m.enqueue_prepared(np.ascontiguousarray(array[...,::-1]) if f else array,shapes)
+
+    def enqueue(self,images):
+        for m,f in zip(self.models,self.flips):m.enqueue([np.ascontiguousarray(i[:,::-1]) for i in images] if f else images)
+
+    @staticmethod
+    def unflip(result):
+        w=result.orig_shape[1];boxes=result.boxes.data.clone()
+        boxes[:,[0,2]]=w-boxes[:,[2,0]]
+        points=None
+        if result.keypoints is not None:
+            points=result.keypoints.data[:,FLIP_KEYPOINTS].clone();points[...,0]=w-points[...,0]
+        return boxes,points
+
+    def collect(self,conf,iou,classes):
+        parts=[m.collect(conf,iou,classes) for m in self.models];output=[]
+        for results in zip(*parts):
+            pairs=[self.unflip(r) if f else (r.boxes.data,r.keypoints.data if self.kpt_shape else None) for r,f in zip(results,self.flips)]
+            boxes=torch.cat([b for b,_ in pairs])
+            points=torch.cat([k for _,k in pairs]) if self.kpt_shape else None
+            if len(boxes):
+                offset=boxes[:,5:6]*4096.   # class-wise NMS: boxes of different classes never overlap
+                keep=torchvision.ops.nms(boxes[:,:4]+offset,boxes[:,4],iou)
+                boxes=boxes[keep];points=points[keep] if points is not None else None
+            output.append(Results(results[0].orig_img,'',self.names,boxes=boxes,keypoints=points))
         return output
 
     def predict(self,images,imgsz,conf,iou,classes,device=None,half=False,verbose=False):

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>来場者カウント</title>
+<style>
+:root{
+  --bg:#121418;--panel:#1b1e24;--panel2:#23272e;--text:#e9ecf1;--muted:#9aa3ae;--line:#2c3139;
+  --accent:#ffb347;--ok:#37b24d;--warn:#f59f00;--bad:#e5484d;
+  --c-in:#ffb347;--c-out:#4dabf7;--c-inside:#69db7c;
+  --c-line:#f03e3e;--c-margin:#ff9800;--c-roi:#4caf50;--c-crop:#2f80ed;--c-person:#ffffff;--c-umb:#22d3ee;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:16px;padding:16px;max-width:1920px;margin:0 auto}
+.panel{background:var(--panel);border-radius:12px;padding:16px 18px}
+/* camera */
+.cam{position:relative;background:#000;border:1px solid var(--line);border-radius:8px;overflow:hidden;aspect-ratio:16/9}
+.cam img{width:100%;height:100%;object-fit:contain;display:block}
+.cam .tag{position:absolute;left:8px;top:6px;font-size:18px;color:#fff;text-shadow:0 1px 2px #000}
+.badge{position:absolute;right:10px;top:10px;font-size:13px;font-weight:700;padding:4px 10px;border-radius:6px;color:#fff;background:var(--muted)}
+.badge.on{background:var(--ok)}.badge.off{background:var(--bad)}.badge.wait{background:var(--warn)}
+.cam .msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted)}
+.cam .msg b{font-size:24px;font-weight:600;color:#c9ced6}
+.cam .msg span{font-size:15px}
+.camfoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px;font-size:14px;color:var(--muted)}
+.lg{display:inline-flex;align-items:center;gap:5px}
+.sq{width:12px;height:12px;border-radius:2px;display:inline-block}
+.camfoot select{margin-left:auto}
+select,button{font:inherit;font-size:13px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+select:focus-visible,button:focus-visible{outline:2px solid #4c8dff;outline-offset:1px}
+/* right column */
+.side{display:flex;flex-direction:column;gap:16px}
+.h{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--muted);font-weight:600}
+.h .date{color:var(--text);font-weight:600}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.tile{background:var(--panel2);border-radius:10px;padding:10px 12px}
+.tl{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600}
+.tl small{color:var(--muted);font-weight:400;font-size:12px;margin-left:auto}
+.num{font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;text-align:right;margin-top:4px}
+.num.in{color:var(--c-in)}.num.out{color:var(--c-out)}.num.inside{color:var(--c-inside);font-size:52px}
+.cap{color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin-top:10px}
+h3{font-size:14px;color:var(--muted);font-weight:600;margin:16px 0 0}
+dl{display:grid;grid-template-columns:1fr auto;margin:12px 0 0;row-gap:9px;font-size:15px}
+dt{color:var(--muted)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.seg{margin-left:auto;display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:4px 12px}
+.seg button[aria-pressed="true"]{background:var(--panel2);color:var(--text);font-weight:700}
+.row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:14px;color:var(--muted)}
+svg{width:100%;height:auto;display:block;margin-top:6px}
+details{margin-top:6px;font-size:14px;color:var(--muted)}
+summary{cursor:pointer;padding:4px 0}
+table{width:100%;border-collapse:collapse;margin-top:6px;font-variant-numeric:tabular-nums}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:right;color:var(--text)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600}
+.note{font-size:12px;color:var(--muted);margin-top:8px}
+@media (max-width:1100px){.wrap{grid-template-columns:1fr}}
+@media (max-width:420px){.num{font-size:36px}.num.inside{font-size:44px}}
+@media (max-width:600px){.wrap{padding:10px;gap:12px}.camfoot{font-size:12px}.camfoot select{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main>
+    <div class="cam">
+      <img id="video" alt="カメラ映像（計測線・判定マージン・計測範囲・検出結果の重ね表示）" hidden>
+      <span class="tag">camera</span>
+      <span class="badge" id="badge">接続中</span>
+      <div class="msg" id="msg"><b id="msgTitle">接続中…</b><span id="msgSub"></span></div>
+    </div>
+    <div class="camfoot">
+      <span class="lg"><i class="sq" style="background:var(--c-line)"></i>カウント線</span>
+      <span class="lg"><i class="sq" style="background:var(--c-margin)"></i>判定マージン</span>
+      <span class="lg"><i class="sq" style="background:var(--c-roi)"></i>計測範囲(足元)</span>
+      <span class="lg"><i class="sq" style="background:var(--c-crop)"></i>照合用切り抜き</span>
+      <span class="lg"><i class="sq" style="background:var(--c-person)"></i>人物検出</span>
+      <span class="lg"><i class="sq" style="background:var(--c-umb)"></i>傘</span>
+      <span class="lg">・点と線: 追跡中の頭位置と軌跡</span>
+      <select id="quality" aria-label="映像の画質">
+        <option value="12.5">映像: なめらか（約8Mbps）</option>
+        <option value="5">映像: 標準（約3Mbps）</option>
+        <option value="1">映像: 省データ（約0.6Mbps）</option>
+        <option value="0">映像: 非表示</option>
+      </select>
+    </div>
+  </main>
+
+  <aside class="side">
+    <section class="panel">
+      <div class="h">通過数<span class="date" id="countDate"></span></div>
+      <div class="tiles">
+        <div class="tile"><div class="tl"><i class="sq" style="background:var(--c-in)"></i><span class="nIn">入場</span><small id="aIn"></small></div><div class="num in" id="cIn">–</div></div>
+        <div class="tile"><div class="tl"><i class="sq" style="background:var(--c-out)"></i><span class="nOut">退場</span><small id="aOut"></small></div><div class="num out" id="cOut">–</div></div>
+      </div>
+      <div class="tile" id="insideBox" style="margin-top:10px" hidden>
+        <div class="tl"><i class="sq" style="background:var(--c-inside)"></i>今キャンパスにいる人数<small>入場 − 退場</small></div>
+        <div class="num inside" id="cInside">–</div>
+        <div class="cap" id="insideCap"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="h">状態</div>
+      <dl>
+        <dt>経過</dt><dd id="sElapsed">-</dd>
+        <dt>受信fps</dt><dd id="sFps">-</dd>
+        <dt>遅延 p50 / p95</dt><dd id="sLat">-</dd>
+        <dt>破棄フレーム</dt><dd id="sDrop">-</dd>
+        <dt>再接続</dt><dd id="sRe">-</dd>
+        <dt>GPU</dt><dd id="sGpu">-</dd>
+        <dt>表示fps</dt><dd id="sShow">-</dd>
+      </dl>
+    </section>
+
+    <section class="panel">
+      <div class="h">時間帯別の来場者数
+        <span class="seg" role="group" aria-label="集計の間隔">
+          <button id="g15" aria-pressed="false">15分</button><button id="g60" aria-pressed="true">1時間</button>
+        </span>
+      </div>
+      <div class="row"><select id="day" aria-label="日付"></select><span id="dayTotal"></span></div>
+      <div class="legend"><span class="lg"><i class="sq" style="background:var(--c-in)"></i><span class="nIn">入場</span></span><span class="lg"><i class="sq" style="background:var(--c-out)"></i><span class="nOut">退場</span></span></div>
+      <svg id="chart" viewBox="0 0 420 260" role="img" aria-label="時間帯別の通過数"></svg>
+      <details><summary>表で見る</summary><table><thead><tr><th>時間帯</th><th class="nIn">入場</th><th class="nOut">退場</th><th class="tInside">在場※</th></tr></thead><tbody id="tbl"></tbody></table>
+      <div class="note tInside">※ 在場は各時間帯の終わりの時点の「入場 − 退場」の累計です。</div></details>
+      <div class="note" id="dayNote"></div>
+    </section>
+  </aside>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>n==null?'-':Number(n).toLocaleString('ja-JP');
+const sfmt=n=>n==null?'-':(n<0?'−':'')+fmt(Math.abs(n));
+const md=d=>{const [y,m,dd]=d.split('-');return `${+m}/${+dd}`};
+const ARROW={rtl:'右→左',ltr:'左→右'};
+let S=null,days=[],selected=null,gran=60,dayCache={},hours=[6,19];
+/* entry: which counted direction enters the campus ('rtl' / 'ltr'), null when the view does not say. */
+let entry=null;
+const dirs=()=>entry?{in:entry,out:entry==='rtl'?'ltr':'rtl'}:{in:'rtl',out:'ltr'};
+const names=()=>entry?{in:'入場',out:'退場'}:{in:'右→左',out:'左→右'};
+function applyLabels(){
+  const D=dirs(),N=names();
+  document.querySelectorAll('.nIn').forEach(e=>e.textContent=N.in);
+  document.querySelectorAll('.nOut').forEach(e=>e.textContent=N.out);
+  $('aIn').textContent=entry?ARROW[D.in]:'';$('aOut').textContent=entry?ARROW[D.out]:'';
+
+  document.querySelectorAll('.tInside').forEach(e=>e.hidden=!entry);
+}
+
+/* ---- video ---- */
+let quality='12.5';try{quality=localStorage.getItem('quality')||(innerWidth<700?'5':'12.5')}catch(e){}
+let videoOn=false;
+function setVideo(on){
+  const want=on&&quality!=='0';
+  if(want&&!videoOn){$('video').src='video.mjpg?fps='+quality;videoOn=true}
+  if(!want&&videoOn){$('video').removeAttribute('src');videoOn=false}
+  $('video').hidden=!want;
+}
+$('quality').value=quality;
+$('quality').onchange=e=>{quality=e.target.value;try{localStorage.setItem('quality',quality)}catch(err){};setVideo(false);render()};
+$('video').onerror=()=>{videoOn=false;setTimeout(render,3000)};
+
+/* ---- days ---- */
+function loadDays(){return fetch('api/days').then(r=>r.json()).then(list=>{
+  days=list;const sel=$('day');
+  sel.innerHTML=list.map(d=>`<option value="${d.date}">${md(d.date)}${d.rebuilt?'＊':''}</option>`).join('');
+  if(!selected||!list.some(d=>d.date===selected))selected=defaultDay();
+  if(selected)sel.value=selected;drawChart();render();
+}).catch(()=>{})}
+function defaultDay(){
+  if(!days.length)return null;
+  const today=S&&S.day,t=days.find(d=>d.date===today);
+  if(t&&(t.rtl+t.ltr>0||(S&&S.state==='running')))return today;
+  return (days.find(d=>d.rtl+d.ltr>0)||days[0]).date;
+}
+$('day').onchange=e=>{selected=e.target.value;drawChart()};
+for(const [id,g] of [['g15',15],['g60',60]])$(id).onclick=()=>{gran=g;$('g15').setAttribute('aria-pressed',g===15);$('g60').setAttribute('aria-pressed',g===60);drawChart()};
+
+function dayBins(day){
+  if(S&&day===S.day)return Promise.resolve({rtl:S.counts.rtl,ltr:S.counts.ltr,bins:S.bins,rebuilt:false,live:true});
+  if(dayCache[day])return Promise.resolve(dayCache[day]);
+  return fetch('api/day?date='+day).then(r=>r.ok?r.json():null).then(d=>{if(d)dayCache[day]=d;return d});
+}
+function yAxis(lo,hi,W,H,L,R,T,B){
+  const step=niceStep((hi-lo)/4),bot=step*Math.floor(lo/step),top=step*Math.ceil(hi/step)||step;
+  const y=v=>H-B-((v-bot)/(top-bot))*(H-B-T);let g='';
+  for(let v=bot;v<=top+1e-9;v+=step)g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"${v===0&&bot<0?' stroke-width="2"':''}/><text x="${L-6}" y="${y(v)+4}" font-size="12" text-anchor="end" fill="var(--muted)">${sfmt(v)}</text>`;
+  return {y,g};
+}
+function hourLabels(n,cw,L,H,every){let g='';for(let i=0;i<=n;i+=every){const h=hours[0]+i*gran/60;g+=`<text x="${L+i*cw}" y="${H-8}" font-size="12" text-anchor="middle" fill="var(--muted)">${h}時</text>`}return g}
+function drawChart(){
+  if(!selected){$('chart').innerHTML='';$('tbl').innerHTML='';$('dayTotal').textContent='';return}
+  dayBins(selected).then(d=>{
+    if(!d)return;
+    const D=dirs(),N=names();
+    const start=new Date(selected+'T00:00:00').getTime()/1000+hours[0]*3600,mins=(hours[1]-hours[0])*60;
+    const n=mins/gran,vin=new Array(n).fill(0),vout=new Array(n).fill(0),net=new Array(mins).fill(0);
+    let outside=0,before=0;
+    for(const b of d.bins){
+      const bi=b[D.in]||0,bo=b[D.out]||0,m=Math.floor((b.t-start)/60);
+      if(m>=0&&m<mins){vin[Math.floor(m/gran)]+=bi;vout[Math.floor(m/gran)]+=bo;net[m]+=bi-bo}
+      else{outside+=bi+bo;if(m<0)before+=bi-bo}
+    }
+    $('dayTotal').textContent=`${N.in} ${fmt(d[D.in])} / ${N.out} ${fmt(d[D.out])}`;
+    /* passages per slot, both directions side by side */
+    const W=420,H=260,L=46,R=18,T=12,B=28,cw=(W-L-R)/n,every=gran===60?2:8;
+    const ax=yAxis(0,Math.max(10,...vin,...vout),W,H,L,R,T,B);let g=ax.g;
+    for(let i=0;i<n;i++){const x=L+i*cw,w=Math.max(.8,cw*.38);
+      for(const [v,off,c,lab] of [[vin[i],.1,'var(--c-in)',N.in],[vout[i],.52,'var(--c-out)',N.out]])
+        if(v)g+=`<rect x="${x+cw*off}" y="${ax.y(v)}" width="${w}" height="${H-B-ax.y(v)}" fill="${c}" rx="1"><title>${slot(i)} ${lab} ${v}人</title></rect>`}
+    $('chart').innerHTML=g+hourLabels(n,cw,L,H,every);
+    /* people on campus: running total of in - out, per minute (today: up to now) */
+    const ins=[];let c=before;
+    for(let m=0;m<mins;m++){c+=net[m];ins.push(c)}
+    let upto=mins;
+    if(d.live&&S)upto=Math.max(0,Math.min(mins,Math.floor((S.now-start)/60)+1));
+    const slotEnd=i=>ins[Math.min(mins,(i+1)*gran)-1];
+    $('tbl').innerHTML=vin.map((v,i)=>{const future=(i*gran)>=upto;
+      return `<tr><td>${slot(i)}</td><td>${future?'':fmt(v)}</td><td>${future?'':fmt(vout[i])}</td>${entry?`<td>${future?'':sfmt(slotEnd(i))}</td>`:''}</tr>`}).join('');
+    $('dayNote').textContent=(d.rebuilt?'＊ 処理の記録から集計し直した日です。':'')+(outside?` 計測時間外の通過 ${fmt(outside)}人はグラフと表に含みません（合計には含みます）。`:'');
+  });
+}
+function slot(i){const m=hours[0]*60+i*gran,e=m+gran,f=x=>`${Math.floor(x/60)}:${String(x%60).padStart(2,'0')}`;return `${f(m)}〜${f(e)}`}
+function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(Math.max(x,1))));for(const k of [1,2,2.5,5,10])if(k*p>=x)return k*p;return 10*p}
+
+/* ---- live state ---- */
+function render(){
+  if(!S)return;
+  if(S.hours)hours=S.hours;
+  if((S.entry||null)!==entry){entry=S.entry||null;applyLabels();drawChart()}
+  const st=S.status||{},running=S.state==='running'&&(S.now-(st.updated||0))<15;
+  const off=S.state==='off_hours'||S.state==='stopped';
+  const b=$('badge');b.className='badge '+(running?'on':off?'off':'wait');
+  b.textContent=running?'計測中':off?'計測時間外':S.state==='error'?'エラー（再試行中）':'接続中';
+  const live=running||S.state==='starting'||S.state==='reconnecting';
+  setVideo(running);
+  $('msg').hidden=running&&quality!=='0';
+  $('msgTitle').textContent=off?'計測時間外':running?'映像は非表示です':S.state==='error'?'カメラに接続できません':'カメラに接続中…';
+  $('msgSub').textContent=off?`毎日 ${hours[0]}:00〜${hours[1]}:00 に計測します`+(st.next_start?`（次回 ${new Date(st.next_start*1000).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'})}）`:''):'';
+  // The numbers: today while counting or once today has data, otherwise the latest day with data.
+  const today=S.day,t=days.find(d=>d.date===today),D=dirs();
+  const shown=(live||(t&&t.rtl+t.ltr>0))?{date:today,rtl:S.counts.rtl,ltr:S.counts.ltr}:(days.find(d=>d.rtl+d.ltr>0)||{date:today,rtl:S.counts.rtl,ltr:S.counts.ltr});
+  $('countDate').textContent=md(shown.date);$('cIn').textContent=fmt(shown[D.in]);$('cOut').textContent=fmt(shown[D.out]);
+  // Only while counting: after the counting hours the difference is no longer "people on campus now".
+  const insideNow=!!entry&&live&&shown.date===today;
+  $('insideBox').hidden=!insideNow;
+  if(insideNow){
+    $('cInside').textContent=sfmt(shown[D.in]-shown[D.out]);
+    $('insideCap').textContent=`この門の入場 − 退場で、計測開始時を0人とします。他の門からの出入りは含まないため、他の門から入って ここから出る人が多い夕方にはマイナスになることがあります。`;
+  }
+  const dash=v=>live&&v!=null?v:'-';
+  const el=st.session_started&&live?Math.max(0,S.now-st.session_started):null;
+  $('sElapsed').textContent=el==null?'-':`${Math.floor(el/3600)}:${String(Math.floor(el%3600/60)).padStart(2,'0')}:${String(Math.floor(el%60)).padStart(2,'0')}`;
+  $('sFps').textContent=dash(st.received_fps!=null?st.received_fps.toFixed(1):null);
+  $('sLat').textContent=dash(st.latency_p50!=null&&st.latency_p95!=null?`${st.latency_p50.toFixed(2)} / ${st.latency_p95.toFixed(2)} 秒`:null);
+  $('sDrop').textContent=dash(st.dropped_frames!=null?fmt(st.dropped_frames):null);
+  $('sRe').textContent=dash(st.reconnects!=null?fmt(st.reconnects):null);
+  $('sGpu').textContent=dash(st.gpu?`${st.gpu.temp_c}℃ / ${Math.round(st.gpu.power_w)}W`:null);
+  $('sShow').textContent=dash(st.display_fps!=null&&videoOn?st.display_fps.toFixed(1):null);
+  if(selected===S.day)drawChartThrottled();
+}
+let lastDraw=0;function drawChartThrottled(){const t=Date.now();if(t-lastDraw>5000){lastDraw=t;drawChart()}}
+
+function onState(s){const prevDay=S&&S.day;S=s;if(prevDay&&prevDay!==s.day)loadDays();render()}
+applyLabels();
+if(window.EventSource){
+  const es=new EventSource('api/stream');es.onmessage=e=>onState(JSON.parse(e.data));
+  es.onerror=()=>{const b=$('badge');b.className='badge wait';b.textContent='再接続中'};
+}else setInterval(()=>fetch('api/state').then(r=>r.json()).then(onState).catch(()=>{}),2000);
+loadDays();setInterval(loadDays,60000);
+</script>
+</body>
+</html>

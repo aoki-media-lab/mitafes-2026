@@ -4,13 +4,17 @@ from merge_indexed import merge as indexed,FIELDS
 from stream_merge import StreamMerger,KEEP
 
 
-def scenario(seed,frames=1200):
+def scenario(seed,frames=1200,duplicates=False):
     """Two branches observing the same walkers; the secondary sometimes sees extra people."""
     rng=random.Random(seed);walkers=[]
     for tid in range(1,25):
         start=rng.randrange(0,frames-120,2);direction=rng.choice([1,-1]);y=rng.uniform(400,1400)
         walkers.append(dict(tid=tid,start=start,direction=direction,y=y,primary=rng.random()>.2,secondary=rng.random()>.2,
                             jitter=rng.uniform(0,40)))
+    if duplicates:
+        # A second track on the same person (e.g. a second box), in either branch.
+        for w in list(walkers):
+            if rng.random()<.3:walkers.append(dict(w,tid=w['tid']+100,start=w['start']+rng.choice([0,2]),jitter=w['jitter']+rng.uniform(-4,4)))
     branches={0:dict(tracks=[],events=[]),1:dict(tracks=[],events=[])}
     for branch in (0,1):
         for frame in range(0,frames,2):
@@ -40,8 +44,8 @@ def write(folder,branch):
         for row in branch['tracks']:f.write(json.dumps(row)+'\n')
 
 
-def stream(branches):
-    merger=StreamMerger();by_frame=[{},{}]
+def stream(branches,profile=None):
+    merger=StreamMerger(profile=profile);by_frame=[{},{}]
     for b in (0,1):
         for e in branches[b]['events']:by_frame[b].setdefault(e['frame'],[]).append(e)
     max_buffer=0
@@ -49,6 +53,12 @@ def stream(branches):
         merger.update(rf['frame'],rf,rr,by_frame[0].get(rf['frame'],[]),by_frame[1].get(rf['frame'],[]))
         max_buffer=max(max_buffer,len(merger.records[0]))
     merger.finish();return merger,max_buffer
+
+
+def offline(branches,profile=None):
+    with tempfile.TemporaryDirectory() as td:
+        root=Path(td);write(root/'p',branches[0]);write(root/'s',branches[1])
+        with contextlib.redirect_stdout(io.StringIO()):return indexed(root/'p',root/'s',root/'out',profile=profile)
 
 
 class StreamMergeTests(unittest.TestCase):
@@ -64,6 +74,19 @@ class StreamMergeTests(unittest.TestCase):
             self.assertEqual(merger.suppressed,offline['suppressed'],seed)
             totals=merger.totals()
             self.assertEqual((totals['ltr'],totals['rtl'],totals['events']),(offline['ltr'],offline['rtl'],offline['events']),seed)
+
+    def test_passage_dedup_streaming_matches_offline(self):
+        profile=dict(dedup_passages=True);removed=0
+        for seed in range(8):
+            branches=scenario(seed,duplicates=True)
+            off=offline(branches,profile);merger,_=stream(branches,profile)
+            key=lambda e:(e['direction'],int(e['frame']),int(e['track_id']))
+            self.assertEqual(sorted(map(key,merger.added)),sorted(map(key,off['added'])),seed)
+            totals=merger.totals()
+            self.assertEqual((totals['ltr'],totals['rtl'],totals['events'],merger.duplicates),(off['ltr'],off['rtl'],off['events'],off['duplicates']),seed)
+            self.assertEqual(off['events'],offline(scenario(seed),profile)['events'],seed)   # duplicates removed exactly
+            removed+=off['duplicates']
+        self.assertGreater(removed,0)
 
     def test_memory_is_bounded_by_the_decision_window(self):
         merger,max_buffer=stream(scenario(0,frames=6000))

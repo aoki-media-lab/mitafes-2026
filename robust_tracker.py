@@ -66,7 +66,7 @@ class RobustPoseAnchorTracker(PoseAnchorTracker):
             duplicate=False
             if accepted_anchors and obs['anchor_method']=='head_keypoints':
                 distance=np.linalg.norm(np.asarray(accepted_anchors)-obs['anchor'],axis=1)
-                threshold=.3*np.minimum(obs['scale'],accepted_scales)
+                threshold=self.profile.get('head_duplicate_fraction',.3)*np.minimum(obs['scale'],accepted_scales)
                 duplicate=bool(np.any((distance<threshold)&np.asarray(accepted_heads)))
             if not duplicate and self.profile.get('pose_duplicate_filter',False):
                 from fusion import same_pose

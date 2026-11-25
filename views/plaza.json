@@ -1,0 +1,101 @@
+{
+  "name": "plaza",
+  "description": "Cobblestone plaza camera (VIGI C450 7C9E, 2880x1620, 25 fps), fixed 2026-11-20. People walk between the lower right and the left gateway / top-left opening; the line crosses that flow over the full frame height. rtl = towards the left (priority direction), ltr = towards the lower right. The ROI drops a strip at the top edge where people stand or walk on the upper level.",
+  "width": 2880,
+  "height": 1620,
+  "fps": 25,
+  "entry_direction": "rtl",
+  "schedule": [{"from": "16:00", "until": "24:00", "detector": {"conf": 0.05}, "note": "From 16:00 (before dark; the camera drops to 20 fps with long exposure at ~16:45) people in dark clothes and pairs are detected at 0.05-0.1. Until 16:00 the original 0.1."}],
+  "base_profile": "reference/profiles/glass_1219_heads_including_bottom.json",
+  "overrides": {
+    "line": [
+      [
+        0.549,
+        0.0
+      ],
+      [
+        0.278,
+        1.0
+      ]
+    ],
+    "line_extent": 0.0,
+    "roi_mode": "polygon",
+    "roi_polygon": [
+      [
+        0.174,
+        0.0
+      ],
+      [
+        0.25,
+        0.0
+      ],
+      [
+        0.27,
+        0.14
+      ],
+      [
+        0.5,
+        0.14
+      ],
+      [
+        0.576,
+        0.173
+      ],
+      [
+        0.844,
+        0.463
+      ],
+      [
+        0.799,
+        0.58
+      ],
+      [
+        0.528,
+        1.0
+      ],
+      [
+        0.174,
+        1.0
+      ]
+    ],
+    "link_seconds": 0.6,
+    "link_distance": 0.08,
+    "birth_band": 0.04
+  },
+  "branches": [
+    {
+      "name": "full",
+      "shape": [
+        736,
+        1280
+      ],
+      "crop": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "profile": {
+        "robust_tracking": true,
+        "pose_new_track_thresh": 0.2,
+        "occlusion_crossings": true
+      }
+    },
+    {
+      "name": "roi",
+      "shape": [
+        736,
+        512
+      ],
+      "crop": [
+        0.22,
+        0,
+        0.62,
+        1
+      ],
+      "profile": {
+        "robust_tracking": true
+      }
+    }
+  ]
+}

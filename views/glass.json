@@ -1,0 +1,11 @@
+{
+  "name": "glass",
+  "description": "Original glass-side camera (2880x1620, 25 fps): vertical line at x=0.6, crop x=40-80%",
+  "width": 2880, "height": 1620, "fps": 25,
+  "base_profile": "reference/profiles/glass_1219_heads_including_bottom.json",
+  "overrides": {},
+  "branches": [
+    {"name": "full", "shape": [736, 1280], "crop": [0, 0, 1, 1], "profile": {"robust_tracking": true, "pose_new_track_thresh": 0.2, "occlusion_crossings": true}},
+    {"name": "roi", "shape": [736, 512], "crop": [0.4, 0, 0.8, 1], "profile": {"robust_tracking": true}}
+  ]
+}

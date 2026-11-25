@@ -23,11 +23,18 @@ class StreamingCounter:
                 self.people_tracker=cls(fps,profile)
         else:self.people_tracker=make_tracker(fps/stride,profile)
         self.umbrella_tracker=make_tracker(fps/(stride*profile.get('umbrella_every',1)),profile,umbrella=True)
-        self.people_counter=TemporalCounter(profile,width,fps)
-        if profile.get('occlusion_crossings',False):
-            from occlusion_counter import OcclusionCounter
-            self.people_counter=OcclusionCounter(profile,width,fps)
-        self.umbrella_counter=TemporalCounter(profile,width,fps)
+        if profile.get('line'):
+            # Arbitrary counting segment (new camera views); see line_counter.py.
+            from line_counter import LineCounter,LineOcclusionCounter
+            cls=LineOcclusionCounter if profile.get('occlusion_crossings',False) else LineCounter
+            self.people_counter=cls(profile,width,fps,height)
+            self.umbrella_counter=LineCounter(profile,width,fps,height)
+        else:
+            self.people_counter=TemporalCounter(profile,width,fps)
+            if profile.get('occlusion_crossings',False):
+                from occlusion_counter import OcclusionCounter
+                self.people_counter=OcclusionCounter(profile,width,fps)
+            self.umbrella_counter=TemporalCounter(profile,width,fps)
         self.totals=Counter(ltr=0,rtl=0)
         self.umbrella_total=0;self.umbrella_review_total=0;self.rejected=0
         self.links=defaultdict(Counter);self.umbrella_last={}
@@ -54,6 +61,8 @@ class StreamingCounter:
         people=[x for x in people if person_quality(x['xyxy'],p,w,h)[0]]
         # A scheduled skipped inference is not evidence that umbrellas vanished.
         umbrellas=objects(self.umbrella_tracker,umbrella_dets,(h,w)) if item.get('umbrella_observed',True) else []
+        if hasattr(self.people_counter,'link'):
+            self.people_counter.link(frame,[(x['id'],*x.get('anchor',foot(x['xyxy']))) for x in people])
         for person in people:
             x,y=person.get('anchor',foot(person['xyxy']))
             self.people_counter.update(person['id'],x,y,frame)

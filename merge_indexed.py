@@ -13,11 +13,26 @@ from merge_passages import same_passage
 
 FIELDS=['event_id','direction','frame','seconds','track_id','x','y']
 
+
+def both_sides_check(profile=None,size=None):
+    """Guard for added secondary events: anchors seen beyond the margin on both sides.
+
+    Without a profile line the original glass band (x<1692 and x>1764) is used.
+    """
+    if not profile or not profile.get('line'):
+        return lambda anchors:any(a[0]<1692 for a in anchors) and any(a[0]>1764 for a in anchors)
+    from line_counter import CountingLine,crossed_both_sides
+    line=CountingLine(profile,*size)
+    return lambda anchors:crossed_both_sides(line,profile,anchors)
+
 def events(folder):
     with (folder/'events.csv').open() as f:return list(csv.DictReader(f))
 
 
-def merge(primary,secondary,output):
+def merge(primary,secondary,output,profile=None,size=None):
+    side_check=both_sides_check(profile,size)
+    pm=(profile or {}).get('passage_match')
+    same=lambda a,pa,b,pb:same_passage(a,pa,b,pb,pm)
     output.mkdir(parents=True,exist_ok=True);started=time.perf_counter()
     aa,bb=events(primary),events(secondary)
     handle=tempfile.NamedTemporaryFile(prefix='merge_',suffix='.sqlite',dir=output,delete=False);scratch=Path(handle.name);handle.close()
@@ -53,17 +68,30 @@ def merge(primary,secondary,output):
         def history(branch,tid,frame):
             return {f:json.loads(payload) for f,payload in db.execute('SELECT frame,payload FROM obs WHERE branch=? AND tid=? AND frame BETWEEN ? AND ?',(branch,tid,frame-100,frame+100))}
 
-        by_time=sorted(aa,key=lambda e:float(e['seconds']));times=[float(e['seconds']) for e in by_time]
         for a in aa:
             if not history(0,int(a['track_id']),int(a['frame'])):raise ValueError('Primary event has no observed trajectory')
-        offset=max((int(e['track_id']) for e in aa),default=0)+1;added=[];suppressed=0
+        duplicates=0;witnesses=aa   # secondary events are matched against every primary passage, kept or not
+        if profile and profile.get('dedup_passages'):
+            # Two primary tracks on one person (e.g. two boxes for one blurred person)
+            # count once: an event is dropped when an earlier kept one is the same passage.
+            kept=[]
+            for a in sorted(aa,key=lambda e:(int(e['frame']),int(e['event_id']))):
+                pa=history(0,int(a['track_id']),int(a['frame']))
+                if any(same(k,history(0,int(k['track_id']),int(k['frame'])),a,pa) for k in kept if float(a['seconds'])-float(k['seconds'])<=3):
+                    duplicates+=1;continue
+                kept.append(a)
+            aa=kept
+        by_time=sorted(witnesses,key=lambda e:float(e['seconds']));times=[float(e['seconds']) for e in by_time]
+        offset=max((int(e['track_id']) for e in witnesses),default=0)+1;added=[];suppressed=0   # all primary IDs
         for b in bb:
             pb=history(1,int(b['track_id']),int(b['frame']));seconds=float(b['seconds'])
             if not pb:raise ValueError('Secondary event has no observed trajectory')
             nearby=by_time[bisect.bisect_left(times,seconds-3):bisect.bisect_right(times,seconds+3)]
-            if any(same_passage(a,history(0,int(a['track_id']),int(a['frame'])),b,pb) for a in nearby):suppressed+=1;continue
-            xs=[p['anchor'][0] for f,p in pb.items() if abs(f-int(b['frame']))<=75]
-            if any(x<1692 for x in xs) and any(x>1764 for x in xs):added.append(b)
+            if any(same(a,history(0,int(a['track_id']),int(a['frame'])),b,pb) for a in nearby):suppressed+=1;continue
+            if profile and profile.get('dedup_passages') and any(abs(seconds-float(x['seconds']))<=3 and same(x,history(1,int(x['track_id']),int(x['frame'])),b,pb) for x in added):
+                duplicates+=1;continue
+            anchors=[p['anchor'] for f,p in pb.items() if abs(f-int(b['frame']))<=75]
+            if side_check(anchors):added.append(b)
         ev=[dict(e) for e in aa]+[dict(e,track_id=int(e['track_id'])+offset) for e in added]
         ev.sort(key=lambda e:float(e['seconds']))
         for i,e in enumerate(ev,1):e['event_id']=i
@@ -79,7 +107,7 @@ def merge(primary,secondary,output):
                 dst.write(json.dumps(pr)+'\n')
         temp_events.replace(output/'events.csv');temp_tracks.replace(output/'tracks.jsonl')
         c=Counter(e['direction'] for e in ev)
-        result=dict(ltr=c['ltr'],rtl=c['rtl'],events=len(ev),primary=str(primary),secondary=str(secondary),added=added,suppressed=suppressed,
+        result=dict(ltr=c['ltr'],rtl=c['rtl'],events=len(ev),primary=str(primary),secondary=str(secondary),added=added,suppressed=suppressed,duplicates=duplicates,
                     reconciliation=dict(method='SQLite trajectory index',query_cache_limit=128,sqlite_cache_mib=8,index_bytes=scratch.stat().st_size,seconds=time.perf_counter()-started))
         (output/'summary.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result));return result
     finally:

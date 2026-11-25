@@ -91,7 +91,11 @@ class PreviewSink:
             if 'anchor' in p:cv2.circle(image,tuple(round(v*scale) for v in p['anchor']),4,(60,220,60),2)
         for p in record['umbrellas']:
             x1,y1,x2,y2=[round(v*scale) for v in p['xyxy']];cv2.rectangle(image,(x1,y1),(x2,y2),(255,120,220),2)
-        line=round(self.profile['line_x']*self.size[0]);cv2.line(image,(line,0),(line,self.size[1]-1),(0,230,255),2)
+        if self.profile.get('line'):
+            (x1,y1),(x2,y2)=self.profile['line'];W,H=self.size
+            cv2.line(image,(round(x1*W),round(y1*H)),(round(x2*W),round(y2*H)),(0,230,255),2)
+        else:
+            line=round(self.profile['line_x']*self.size[0]);cv2.line(image,(line,0),(line,self.size[1]-1),(0,230,255),2)
         text=f'GPU | {record["frame"]/fps:.2f}s | LTR {summary["ltr"]} RTL {summary["rtl"]}'
         cv2.putText(image,text,(14,28),cv2.FONT_HERSHEY_SIMPLEX,.65,(0,0,0),4)
         cv2.putText(image,text,(14,28),cv2.FONT_HERSHEY_SIMPLEX,.65,(255,255,255),1)
